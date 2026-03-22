@@ -5,9 +5,13 @@ interface CitationCardProps {
 }
 
 export function CitationCard({ citation }: CitationCardProps) {
-  const score = citation.reranker_score;
+  // Use the normalized `score` field (set by the retrieval layer to the most
+  // authoritative relevance metric). Falls back to `reranker_score`.
+  // Cross-encoder (ms-marco-MiniLM) outputs logits in range ~[-11, +11],
+  // NOT cosine similarity [0, 1]. Thresholds calibrated accordingly.
+  const score = citation.score ?? citation.reranker_score;
   const confidence = score !== null
-    ? score >= 0.7 ? 'high' : score >= 0.4 ? 'medium' : 'low'
+    ? score >= 5 ? 'high' : score >= 1 ? 'medium' : 'low'
     : 'unknown';
 
   const confidenceColors = {

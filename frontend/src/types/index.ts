@@ -18,7 +18,8 @@ export interface CitationMeta {
   page_number: number | null;
   chunk_index: number;
   pinecone_id: string;
-  reranker_score: number | null;
+  score: number | null;              // Final normalized relevance score
+  reranker_score: number | null;     // Raw cross-encoder score
 }
 
 export type MessageRole = 'user' | 'assistant';

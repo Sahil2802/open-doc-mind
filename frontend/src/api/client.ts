@@ -43,6 +43,7 @@ export interface QueryStreamCallbacks {
   onCitations: (citations: CitationMeta[]) => void;
   onReplace: (fullText: string) => void;
   onDone: () => void;
+  onRefused: (text: string) => void;
   onError: (message: string) => void;
 }
 
@@ -96,6 +97,9 @@ export async function streamQuery(
               break;
             case 'done':
               callbacks.onDone();
+              break;
+            case 'refused':
+              callbacks.onRefused(data.text);
               break;
             case 'error':
               callbacks.onError(data.message);

@@ -68,6 +68,13 @@ export function useChat(selectedDocumentId: string | null) {
           ));
           setIsLoading(false);
         },
+        onRefused: (text: string) => {
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId
+              ? { ...m, text, wasRefused: true }
+              : m
+          ));
+        },
         onError: (message: string) => {
           setMessages(prev => prev.map(m =>
             m.id === assistantId

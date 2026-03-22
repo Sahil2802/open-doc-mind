@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&height=220&fontSize=50&text=Awesome%20Open%20RAG&color=0:6366f1,100:8b5cf6" alt="Banner"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&height=220&fontSize=50&text=AskMyDocs&color=0:6366f1,100:8b5cf6" alt="Banner"/>
 </p>
 
 <div align="center">
 
-# Awesome Open RAG — Production-Grade Document Q&A System
+# AskMyDocs — Ask your local documents anything
 
-A production-ready Retrieval-Augmented Generation system for building "Ask My Docs" applications. Upload PDF or text documents and get AI-powered answers with cited sources.
+Ask your local open-source RAG. A production-ready Retrieval-Augmented Generation system that lets you upload PDF or text documents and get AI-powered answers with cited sources.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-00a97f?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -81,8 +81,8 @@ A production-ready Retrieval-Augmented Generation system for building "Ask My Do
 ### 1. Clone & Install Backend
 
 ```bash
-git clone https://github.com/Sahil2802/awesome-open-rag.git
-cd awesome-open-rag
+git clone https://github.com/Sahil2802/askmydocs.git
+cd askmydocs
 
 # Create virtual environment
 python -m venv venv
@@ -186,7 +186,7 @@ data: {"finished": true}
 ## 📁 Project Structure
 
 ```
-awesome-open-rag/
+askmydocs/
 ├── backend/
 │   ├── api/                    # FastAPI routes & models
 │   ├── ingestion/             # Parsing, chunking, embedding

@@ -4,7 +4,7 @@
 
 <div align="center">
 
-# AskMyDocs — Ask your local documents anything
+# AskMyDocs - Ask your local documents anything
 
 Ask your local open-source RAG. A production-ready Retrieval-Augmented Generation system that lets you upload PDF or text documents and get AI-powered answers with cited sources.
 

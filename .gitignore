@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 
+build/
+dist/
+
+# Node
+node_modules/
+
 # Virtual environment
 venv/
 
@@ -17,4 +23,5 @@ venv/
 # IDE
 .vscode/
 .agent
+.claude/
 documentation/

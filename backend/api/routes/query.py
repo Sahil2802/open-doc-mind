@@ -92,8 +92,19 @@ async def query_documents(request: QueryRequest):
         if was_refused and final_answer != full_answer:
             yield f"event: replace\ndata: {json.dumps({'text': final_answer})}\n\n"
 
-        # Send citation metadata
-        yield f"event: citations\ndata: {json.dumps(citation_map)}\n\n"
+        # Send citation metadata or clear them if refused
+        if was_refused:
+            yield f"event: refused\ndata: {json.dumps({'text': final_answer})}\n\n"
+            yield f"event: citations\ndata: {json.dumps([])}\n\n"
+        else:
+            # Filter citation_map to only include documents the LLM actually cited
+            import re
+            cited_files = set(re.findall(r"\[Source:\s*([^,\]\n]+)", final_answer))
+            filtered_citations = [
+                c for c in citation_map 
+                if c.get("file_name") in cited_files
+            ]
+            yield f"event: citations\ndata: {json.dumps(filtered_citations)}\n\n"
 
         latency_ms = int(time.time() * 1000) - start_ms
         logger.info(

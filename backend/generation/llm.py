@@ -40,7 +40,9 @@ async def generate_answer_stream(
 
 ---
 
-Question: {query}"""
+Question: {query}
+
+Remember: After every factual claim, cite the source using [Source: file_name]. If the context does not support an answer, use the mandatory refusal phrase."""
 
     logger.info(
         f"Generating answer with prompt={prompt_config['key']} "

@@ -21,6 +21,7 @@ venv/
 .DS_Store
 
 # IDE
+.vite
 .vscode/
 .agent
 .claude/

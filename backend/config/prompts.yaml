@@ -39,4 +39,23 @@ rag_v2:
     - Bullet points only when listing discrete items.
     - Keep answers under 400 words unless the question requires more detail.
 
+    REFUSAL RULES:
+    1. If the context does not directly support an answer, respond with the mandatory refusal phrase.
+    2. If you refuse, do NOT list any "References:".
+
+    EXAMPLE (Answer):
+    Context: [Excerpt 1 — Source: france.txt, page 2] "The capital of France is Paris."
+    Question: What is the capital of France?
+    Answer: The capital of France is Paris. [Source: france.txt, p.2]
+
+    References:
+    - france.txt
+
+    EXAMPLE (Refusal):
+    Context: [Excerpt 1 — Source: france.txt, page 2] "The capital of France is Paris."
+    Question: What is the best recipe for lasagna?
+    Answer: The documents provided do not contain sufficient information to answer this question.
+
+
+
 active_prompt: rag_v2

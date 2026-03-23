@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&height=220&fontSize=50&text=AskMyDocs&color=0:6366f1,100:8b5cf6" alt="Banner"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&height=220&fontSize=50&text=open-doc-mind&color=0:6366f1,100:8b5cf6" alt="Banner"/>
 </p>
 
 <div align="center">
 
-# AskMyDocs - Ask your local documents anything
+# open-doc-mind
 
-Ask your local open-source RAG. A production-ready Retrieval-Augmented Generation system that lets you upload PDF or text documents and get AI-powered answers with cited sources.
+A production-ready RAG system for PDF and text documents with AI-powered answers and cited sources.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-00a97f?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -21,13 +21,13 @@ Ask your local open-source RAG. A production-ready Retrieval-Augmented Generatio
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| 🔍 **Hybrid Retrieval** | Combines vector search (BGE embeddings) with BM25 keyword search using Reciprocal Rank Fusion |
-| 📄 **Multi-Format Support** | PDF parsing via PyMuPDF and plain text file ingestion |
-| 🎯 **Citation-First** | Grounded responses with source citations; refuses to answer when context doesn't support it |
-| 🌊 **Streaming Responses** | Real-time token streaming via Server-Sent Events (SSE) |
-| 📊 **Evaluation Ready** | RAGAS metrics integration with golden set evaluation pipeline |
+| Feature                     | Description                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| 🔍 **Hybrid Retrieval**     | Combines vector search (BGE embeddings) with BM25 keyword search using Reciprocal Rank Fusion |
+| 📄 **Multi-Format Support** | PDF parsing via PyMuPDF and plain text file ingestion                                         |
+| 🎯 **Citation-First**       | Grounded responses with source citations; refuses to answer when context doesn't support it   |
+| 🌊 **Streaming Responses**  | Real-time token streaming via Server-Sent Events (SSE)                                        |
+| 📊 **Evaluation Ready**     | RAGAS metrics integration with golden set evaluation pipeline                                 |
 
 ---
 
@@ -81,8 +81,8 @@ Ask your local open-source RAG. A production-ready Retrieval-Augmented Generatio
 ### 1. Clone & Install Backend
 
 ```bash
-git clone https://github.com/Sahil2802/askmydocs.git
-cd askmydocs
+git clone https://github.com/Sahil2802/open-doc-mind.git
+cd open-doc-mind
 
 # Create virtual environment
 python -m venv venv
@@ -127,13 +127,14 @@ cp .env.example .env
 ```
 
 Edit `frontend/.env`:
+
 ```bash
 VITE_API_URL=http://localhost:8000
 ```
 
 ---
 
-##  Running the Application
+## Running the Application
 
 ### Backend
 
@@ -156,14 +157,14 @@ Open `http://localhost:5173`
 
 ---
 
-##  API Reference
+## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/upload` | Upload PDF or TXT file |
-| `POST` | `/api/query` | Ask a question (SSE streaming) |
-| `GET` | `/api/documents` | List uploaded documents |
-| `DELETE` | `/api/documents/{id}` | Delete a document |
+| Method   | Endpoint              | Description                    |
+| -------- | --------------------- | ------------------------------ |
+| `POST`   | `/api/upload`         | Upload PDF or TXT file         |
+| `POST`   | `/api/query`          | Ask a question (SSE streaming) |
+| `GET`    | `/api/documents`      | List uploaded documents        |
+| `DELETE` | `/api/documents/{id}` | Delete a document              |
 
 ### Example: Query
 
@@ -174,6 +175,7 @@ curl -X POST http://localhost:8000/api/query \
 ```
 
 Streaming response:
+
 ```
 data: {"token": "The", "finished": false}
 data: {"token": " document", "finished": false}
@@ -186,7 +188,7 @@ data: {"finished": true}
 ## 📁 Project Structure
 
 ```
-askmydocs/
+open-doc-mind/
 ├── backend/
 │   ├── api/                    # FastAPI routes & models
 │   ├── ingestion/             # Parsing, chunking, embedding
@@ -208,36 +210,32 @@ askmydocs/
 
 <div align="center">
 
-| Layer | Technology |
-|-------|-------------|
-| **Frontend** | React, TypeScript, Vite |
-| **Backend** | Python, FastAPI, LangChain |
-| **Embeddings** | BGE Small (384-dim) |
-| **Vector DB** | Pinecone |
-| **Keyword Search** | BM25 (rank_bm25) |
-| **Re-ranker** | Cross-Encoder ms-marco-MiniLM-L-6-v2 |
-| **LLM** | Groq (Llama 3.1 8B) |
-| **Storage** | Supabase (PostgreSQL + Storage) |
-| **Evaluation** | RAGAS |
+| Layer              | Technology                           |
+| ------------------ | ------------------------------------ |
+| **Frontend**       | React, TypeScript, Vite              |
+| **Backend**        | Python, FastAPI, LangChain           |
+| **Embeddings**     | BGE Small (384-dim)                  |
+| **Vector DB**      | Pinecone                             |
+| **Keyword Search** | BM25 (rank_bm25)                     |
+| **Re-ranker**      | Cross-Encoder ms-marco-MiniLM-L-6-v2 |
+| **LLM**            | Groq (Llama 3.1 8B)                  |
+| **Storage**        | Supabase (PostgreSQL + Storage)      |
+| **Evaluation**     | RAGAS                                |
 
 </div>
 
 ---
 
-## 📊 Evaluation
+## CI Results
 
-Run evaluation pipeline:
+Latest evaluation results from GitHub Actions:
 
-```bash
-cd eval
-python run_ragas.py
-```
-
-Evaluates:
-- **Faithfulness** ≥ 0.80
-- **Context Precision** ≥ 0.75
-
----
+| Metric            | Score  | Threshold |
+| ----------------- | ------ | --------- |
+| Faithfulness      | ≥ 0.75 | ≥ 0.75 ✓  |
+| Context Precision | ≥ 0.75 | ≥ 0.75 ✓  |
+| Answer Relevancy  | ≥ 0.75 | ≥ 0.75 ✓  |
+| Refusal Accuracy  | ≥ 0.85 | ≥ 0.85 ✓  |
 
 ## 🤝 Contributing
 

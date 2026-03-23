@@ -36,6 +36,7 @@ def build_context_block(chunks: list[dict]) -> tuple[str, list[dict]]:
             "file_name": chunk["file_name"],
             "page_number": chunk.get("page_number"),
             "chunk_index": chunk["chunk_index"],
+            "chunk_text": chunk.get("chunk_text", ""),
             "pinecone_id": chunk["pinecone_id"],
             "score": chunk.get("score"),
             "reranker_score": chunk.get("reranker_score"),

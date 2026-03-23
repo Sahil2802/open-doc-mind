@@ -1,0 +1,49 @@
+[
+  {
+    "id": "q001",
+    "question": "What is the capital of France?",
+    "ground_truth": "The capital of France is Paris.",
+    "source_document": "test_ingest.txt",
+    "relevant_pages": [1],
+    "difficulty": "easy",
+    "category": "factual"
+  },
+  {
+    "id": "q002",
+    "question": "Who is the Eiffel Tower named after?",
+    "ground_truth": "The Eiffel Tower is named after the engineer Gustave Eiffel.",
+    "source_document": "eiffel_tower.txt",
+    "relevant_pages": [1],
+    "difficulty": "easy",
+    "category": "factual"
+  },
+  {
+    "id": "q003",
+    "question": "When was TypeScript 1.0 released?",
+    "ground_truth": "TypeScript 1.0 was released at Microsoft's Build developer conference in 2014.",
+    "source_document": "typescript.txt",
+    "relevant_pages": [1],
+    "difficulty": "medium",
+    "category": "temporal"
+  },
+  {
+    "id": "q004",
+    "question": "What is the customer support email in the contract?",
+    "ground_truth": "UNANSWERABLE",
+    "source_document": null,
+    "relevant_pages": [],
+    "difficulty": "medium",
+    "category": "out_of_scope",
+    "notes": "Should trigger refusal because no contract/support-contact document exists in the corpus"
+  },
+  {
+    "id": "q005",
+    "question": "What is the warranty period for hardware defects?",
+    "ground_truth": "UNANSWERABLE",
+    "source_document": null,
+    "relevant_pages": [],
+    "difficulty": "medium",
+    "category": "out_of_scope",
+    "notes": "Should trigger refusal because warranty terms are not present in the available documents"
+  }
+]

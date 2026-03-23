@@ -1,12 +1,36 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
+import logging
 
-# Use the same tokenizer as the embedding model for accurate token counts
-_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-small-en-v1.5")
+logger = logging.getLogger(__name__)
+
+# Lazy tokenizer init avoids crashing app startup when HF is unavailable in CI.
+_tokenizer = None
+
+
+def _get_tokenizer():
+    global _tokenizer
+    if _tokenizer is not None:
+        return _tokenizer
+
+    try:
+        _tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-small-en-v1.5")
+    except Exception as exc:
+        logger.warning(
+            "Falling back to heuristic token counting; tokenizer load failed: %s",
+            exc,
+        )
+        _tokenizer = False
+    return _tokenizer
 
 
 def count_tokens(text: str) -> int:
-    return len(_tokenizer.encode(text))
+    tokenizer = _get_tokenizer()
+    if tokenizer:
+        return len(tokenizer.encode(text))
+
+    # Rough fallback for environments without HF access (e.g., restricted CI).
+    return max(1, len(text) // 4)
 
 
 def token_length_function(text: str) -> int:

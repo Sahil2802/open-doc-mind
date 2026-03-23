@@ -1,0 +1,91 @@
+name: RAG Evaluation
+
+on:
+  push:
+    paths:
+      - 'backend/retrieval/**'
+      - 'backend/generation/**'
+      - 'backend/config/prompts.yaml'
+      - 'eval/**'
+  pull_request:
+    paths:
+      - 'backend/retrieval/**'
+      - 'backend/generation/**'
+      - 'backend/config/prompts.yaml'
+      - 'eval/**'
+  workflow_dispatch:  # Allow manual runs
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Start RAG backend
+        env:
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ secrets.PINECONE_INDEX_NAME }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACEHUB_API_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &
+          # Wait for server to be ready
+          ready=0
+          for i in {1..30}; do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Backend failed to start in time" >&2
+            exit 1
+          fi
+
+      - name: Detect eval script location
+        run: |
+          if [ -f eval/run_ragas.py ] && [ -f eval/check_thresholds.py ]; then
+            echo "EVAL_DIR=eval" >> "$GITHUB_ENV"
+          elif [ -f backend/eval/run_ragas.py ] && [ -f backend/eval/check_thresholds.py ]; then
+            echo "EVAL_DIR=backend/eval" >> "$GITHUB_ENV"
+          else
+            echo "Could not find run_ragas.py and check_thresholds.py" >&2
+            find . -maxdepth 4 -type f | sed 's#^./##' | sort
+            exit 1
+          fi
+
+      - name: Run evaluation
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACEHUB_API_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python $EVAL_DIR/run_ragas.py --output $EVAL_DIR/results/ci_run.json
+
+      - name: Check thresholds
+        run: |
+          python $EVAL_DIR/check_thresholds.py $EVAL_DIR/results/ci_run.json
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: ${{ env.EVAL_DIR }}/results/ci_run.json

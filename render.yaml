@@ -3,6 +3,6 @@ services:
     name: rag-api
     env: python
     plan: free
-    buildCommand: pip install --no-cache-dir --no-hash -r backend/requirements.txt
+    buildCommand: pip install --upgrade pip && (pip uninstall -y multipart || true) && pip install --no-cache-dir -r backend/requirements.txt && pip install --no-cache-dir python-multipart==0.0.20
     startCommand: uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health

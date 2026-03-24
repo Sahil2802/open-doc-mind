@@ -87,6 +87,7 @@ PyMuPDF==1.27.2.2
 pyparsing==3.3.2
 pyroaring==1.0.4
 python-dateutil==2.9.0.post0
+python-multipart==0.0.20
 python-dotenv==1.2.2
 PyYAML==6.0.3
 ragas==0.4.3

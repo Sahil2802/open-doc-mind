@@ -3,6 +3,18 @@ from pinecone import Pinecone
 from backend.config.settings import settings
 
 
+_pc = None
+_index = None
+
+
+def _get_index():
+    global _pc, _index
+    if _index is None:
+        _pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _index = _pc.Index(settings.PINECONE_INDEX_NAME)
+    return _index
+
+
 def compute_file_hash(file_bytes: bytes) -> str:
     """SHA-256 hash used for idempotent ingestion and deduplication."""
     return hashlib.sha256(file_bytes).hexdigest()
@@ -31,10 +43,6 @@ async def store_file(
         file_options={"content-type": "application/octet-stream"}  # Generic for now
     )
     return storage_path
-
-
-_pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-_index = _pc.Index(settings.PINECONE_INDEX_NAME)
 
 
 def upsert_to_pinecone(
@@ -69,6 +77,7 @@ def upsert_to_pinecone(
 
     # Batch upserts
     batch_size = 100
+    index = _get_index()
     for i in range(0, len(vectors), batch_size):
         batch = vectors[i:i + batch_size]
-        _index.upsert(vectors=batch)
+        index.upsert(vectors=batch)

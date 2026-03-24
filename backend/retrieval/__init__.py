@@ -8,8 +8,16 @@ from backend.retrieval.reranker import rerank
 
 logger = logging.getLogger(__name__)
 
-_pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-_index = _pc.Index(settings.PINECONE_INDEX_NAME)
+_pc = None
+_index = None
+
+
+def _get_index():
+    global _pc, _index
+    if _index is None:
+        _pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _index = _pc.Index(settings.PINECONE_INDEX_NAME)
+    return _index
 
 
 def retrieve_chunks(
@@ -76,7 +84,8 @@ def retrieve_chunks(
 
     if missing_pids:
         try:
-            fetch_response = _index.fetch(ids=missing_pids)
+            index = _get_index()
+            fetch_response = index.fetch(ids=missing_pids)
             for vid, vector in fetch_response.vectors.items():
                 vector_metadata[vid] = vector.metadata
             logger.info(f"Fetched metadata for {len(missing_pids)} BM25-only chunks from Pinecone")

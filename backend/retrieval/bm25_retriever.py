@@ -8,8 +8,16 @@ from backend.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-_pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-_index = _pc.Index(settings.PINECONE_INDEX_NAME)
+_pc = None
+_index = None
+
+
+def _get_index():
+    global _pc, _index
+    if _index is None:
+        _pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _index = _pc.Index(settings.PINECONE_INDEX_NAME)
+    return _index
 
 STORAGE_BUCKET = "system"
 STORAGE_KEY = "bm25_index.pkl"
@@ -29,15 +37,16 @@ def rebuild_bm25_index(supabase_client) -> None:
     try:
         pinecone_ids = []
         chunk_texts = []
+        index = _get_index()
 
         # Pinecone list() paginates through all vector IDs
-        for page in _index.list():
+        for page in index.list():
             ids_batch = page
             if not ids_batch:
                 continue
 
             # Fetch metadata for this batch
-            fetch_response = _index.fetch(ids=ids_batch)
+            fetch_response = index.fetch(ids=ids_batch)
             for vid, vector in fetch_response.vectors.items():
                 pinecone_ids.append(vid)
                 chunk_texts.append(vector.metadata.get("chunk_text", ""))

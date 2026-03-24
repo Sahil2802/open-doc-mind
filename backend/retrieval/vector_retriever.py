@@ -5,8 +5,16 @@ from backend.ingestion.embedder import embed_query
 
 logger = logging.getLogger(__name__)
 
-_pc = Pinecone(api_key=settings.PINECONE_API_KEY)
-_index = _pc.Index(settings.PINECONE_INDEX_NAME)
+_pc = None
+_index = None
+
+
+def _get_index():
+    global _pc, _index
+    if _index is None:
+        _pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _index = _pc.Index(settings.PINECONE_INDEX_NAME)
+    return _index
 
 
 def vector_search(
@@ -34,7 +42,8 @@ def vector_search(
         filter_dict["document_id"] = {"$eq": filter_document_id}
 
     try:
-        response = _index.query(
+        index = _get_index()
+        response = index.query(
             vector=query_embedding,
             top_k=top_k,
             include_metadata=True,

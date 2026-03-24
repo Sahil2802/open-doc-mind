@@ -3,22 +3,24 @@ name: RAG Evaluation
 on:
   push:
     paths:
-      - 'backend/retrieval/**'
-      - 'backend/generation/**'
-      - 'backend/config/prompts.yaml'
-      - 'eval/**'
+      - "backend/retrieval/**"
+      - "backend/generation/**"
+      - "backend/config/prompts.yaml"
+      - "eval/**"
   pull_request:
     paths:
-      - 'backend/retrieval/**'
-      - 'backend/generation/**'
-      - 'backend/config/prompts.yaml'
-      - 'eval/**'
-  workflow_dispatch:  # Allow manual runs
+      - "backend/retrieval/**"
+      - "backend/generation/**"
+      - "backend/config/prompts.yaml"
+      - "eval/**"
+  workflow_dispatch: # Allow manual runs
 
 jobs:
   evaluate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      EVAL_DIR: eval
 
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +28,8 @@ jobs:
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |

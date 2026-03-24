@@ -1,12 +1,30 @@
+import os
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from backend.api.routes import ingest, documents, query
-from backend.config.settings import settings
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+app_mode = os.getenv("RAG_APP_MODE", "full").strip().lower()
+is_smoke_mode = app_mode == "smoke"
+enable_routers = os.getenv("RAG_ENABLE_ROUTERS", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+# Do not require settings import when running smoke diagnostics.
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+if not is_smoke_mode:
+    try:
+        from backend.config.settings import settings
+
+        frontend_url = settings.FRONTEND_URL
+    except Exception as exc:
+        logger.warning("Settings import failed; using FRONTEND_URL env fallback: %s", exc)
 
 app = FastAPI(
     title="RAG API",
@@ -21,7 +39,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",  # Vite dev
         "http://localhost:3000",  # Alternate dev
-        settings.FRONTEND_URL,   # Production domain
+        frontend_url,  # Production domain
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -39,12 +57,25 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Routes
-app.include_router(ingest.router, prefix="/api", tags=["ingestion"])
-app.include_router(documents.router, prefix="/api", tags=["documents"])
-app.include_router(query.router, prefix="/api", tags=["query"])
+# Routes (optional for startup diagnostics)
+if not is_smoke_mode and enable_routers:
+    from backend.api.routes import ingest, documents, query
+
+    app.include_router(ingest.router, prefix="/api", tags=["ingestion"])
+    app.include_router(documents.router, prefix="/api", tags=["documents"])
+    app.include_router(query.router, prefix="/api", tags=["query"])
+else:
+    logger.info(
+        "API routers disabled (RAG_APP_MODE=%s, RAG_ENABLE_ROUTERS=%s)",
+        app_mode,
+        enable_routers,
+    )
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "mode": app_mode,
+        "routers_enabled": (not is_smoke_mode and enable_routers),
+    }

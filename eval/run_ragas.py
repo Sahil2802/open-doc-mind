@@ -15,8 +15,11 @@ import argparse
 import asyncio
 import logging
 import math
+import importlib
 from pathlib import Path
 from datetime import datetime, timezone
+from collections.abc import Mapping
+from typing import Any, TypedDict, cast
 
 import httpx
 from dotenv import load_dotenv
@@ -32,10 +35,52 @@ load_dotenv(REPO_ROOT / ".env")
 from openai import AsyncOpenAI
 from ragas.llms import llm_factory
 from langchain_community.embeddings import HuggingFaceEmbeddings as LCHuggingFaceEmbeddings
-from ragas.metrics import faithfulness, answer_relevancy, context_precision
-from ragas import evaluate
+from ragas import metrics as ragas_metrics
 from ragas.run_config import RunConfig
-from datasets import Dataset
+from datasets import Dataset  # pyright: ignore[reportMissingTypeStubs]
+
+ragas_evaluate: Any = importlib.import_module("ragas").evaluate
+
+
+class GoldenSetItem(TypedDict):
+    id: str
+    question: str
+    ground_truth: str
+    category: str
+    difficulty: str
+
+
+class RagResponse(TypedDict):
+    answer: str
+    contexts: list[str]
+    was_refused: bool
+
+
+class CollectedResponse(TypedDict):
+    id: str
+    question: str
+    ground_truth: str
+    answer: str
+    contexts: list[str]
+    was_refused: bool
+    category: str
+    difficulty: str
+    should_refuse: bool
+
+
+class RefusalStats(TypedDict):
+    refusal_accuracy: float | None
+    refusal_total: int
+    correct_refusals: int
+
+
+class EvalResults(TypedDict):
+    timestamp: str
+    total_questions: int
+    evaluable_questions: int
+    ragas: dict[str, float | None]
+    refusal: RefusalStats
+    responses: list[CollectedResponse]
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -57,6 +102,29 @@ REFUSAL_PHRASES = [
     "not mentioned in the provided",
     "cannot be found in the documents",
 ]
+
+
+def _as_mapping(value: object) -> Mapping[str, object] | None:
+    if isinstance(value, Mapping):
+        return cast(Mapping[str, object], value)
+    return None
+
+
+def _as_str(value: object, *, field_name: str, item_index: int) -> str:
+    if isinstance(value, str):
+        return value
+    raise ValueError(
+        f"Golden set item {item_index} has non-string field '{field_name}'."
+    )
+
+
+def _finite_float(value: object) -> float | None:
+    if not isinstance(value, (int, float)):
+        return None
+    parsed = float(value)
+    if math.isnan(parsed):
+        return None
+    return parsed
 
 
 def _looks_like_refusal(answer: str) -> bool:
@@ -88,7 +156,7 @@ def _build_eval_llm(max_tokens: int):
     )
 
 
-def load_golden_set() -> list[dict]:
+def load_golden_set() -> list[GoldenSetItem]:
     """Load and validate the golden set JSON file."""
     if not GOLDEN_SET_PATH.exists():
         raise FileNotFoundError(
@@ -96,26 +164,56 @@ def load_golden_set() -> list[dict]:
             "Create it before running evaluation."
         )
     with open(GOLDEN_SET_PATH, encoding="utf-8") as f:
-        data = json.load(f)
+        raw_data: object = json.load(f)
 
-    if not isinstance(data, list) or len(data) == 0:
+    if not isinstance(raw_data, list):
+        raise ValueError("Golden set must be a non-empty JSON array.")
+    raw_items = cast(list[object], raw_data)
+    if not raw_items:
         raise ValueError("Golden set must be a non-empty JSON array.")
 
-    # Basic schema validation
+    validated: list[GoldenSetItem] = []
     required_keys = {"id", "question", "ground_truth"}
-    for i, item in enumerate(data):
+
+    for i, raw_item in enumerate(raw_items):
+        item = _as_mapping(raw_item)
+        if item is None:
+            raise ValueError(f"Golden set item {i} must be a JSON object.")
+
         missing = required_keys - set(item.keys())
         if missing:
             raise ValueError(
                 f"Golden set item {i} (id={item.get('id', '?')}) "
                 f"missing required keys: {missing}"
             )
-    return data
+
+        item_id = str(item.get("id"))
+        question = _as_str(item.get("question"), field_name="question", item_index=i)
+        ground_truth = _as_str(
+            item.get("ground_truth"),
+            field_name="ground_truth",
+            item_index=i,
+        )
+
+        category_obj = item.get("category")
+        difficulty_obj = item.get("difficulty")
+
+        validated.append(
+            GoldenSetItem(
+                id=item_id,
+                question=question,
+                ground_truth=ground_truth,
+                category=category_obj if isinstance(category_obj, str) else "unknown",
+                difficulty=difficulty_obj if isinstance(difficulty_obj, str) else "unknown",
+            )
+        )
+
+    return validated
 
 
 async def get_rag_response(
     question: str, client: httpx.AsyncClient
-) -> dict:
+) -> RagResponse:
     """Call the RAG API and collect the full streamed response."""
     answer_parts: list[str] = []
     contexts: list[str] = []
@@ -137,23 +235,52 @@ async def get_rag_response(
                 try:
                     data = json.loads(data_str)
                     if current_event == "token":
-                        answer_parts.append(data["text"])
+                        payload = _as_mapping(data)
+                        text = payload.get("text") if payload is not None else None
+                        if isinstance(text, str):
+                            answer_parts.append(text)
                     elif current_event == "replace":
-                        answer_parts = [data["text"]]
-                        was_refused = True
+                        payload = _as_mapping(data)
+                        text = payload.get("text") if payload is not None else None
+                        if isinstance(text, str):
+                            answer_parts = [text]
+                            was_refused = True
                     elif current_event == "refused":
-                        answer_parts = [data.get("text", "")]
+                        payload = _as_mapping(data)
+                        text = payload.get("text") if payload is not None else None
+                        answer_parts = [text if isinstance(text, str) else ""]
                         was_refused = True
                     elif current_event == "citations":
                         # Prefer full retrieved chunk text for RAGAS context metrics.
                         extracted_contexts: list[str] = []
-                        for citation in data:
-                            chunk_text = (citation.get("chunk_text") or "").strip()
+                        citations = cast(list[object], data) if isinstance(data, list) else []
+                        for raw_citation in citations:
+                            citation = _as_mapping(raw_citation)
+                            if citation is None:
+                                continue
+
+                            chunk_text_obj = citation.get("chunk_text")
+                            chunk_text = (
+                                chunk_text_obj.strip()
+                                if isinstance(chunk_text_obj, str)
+                                else ""
+                            )
                             if chunk_text:
                                 extracted_contexts.append(chunk_text)
                                 continue
-                            file_name = citation.get("file_name", "unknown")
-                            page_number = citation.get("page_number", "N/A")
+
+                            file_name_obj = citation.get("file_name")
+                            page_number_obj = citation.get("page_number")
+                            file_name = (
+                                file_name_obj
+                                if isinstance(file_name_obj, str)
+                                else "unknown"
+                            )
+                            page_number = (
+                                str(page_number_obj)
+                                if page_number_obj is not None
+                                else "N/A"
+                            )
                             extracted_contexts.append(
                                 f"[Source: {file_name}, p.{page_number}]"
                             )
@@ -173,9 +300,9 @@ async def get_rag_response(
     }
 
 
-async def collect_responses(golden_set: list[dict]) -> list[dict]:
+async def collect_responses(golden_set: list[GoldenSetItem]) -> list[CollectedResponse]:
     """Run all golden questions through the RAG system."""
-    results: list[dict] = []
+    results: list[CollectedResponse] = []
     async with httpx.AsyncClient() as client:
         for item in golden_set:
             question_preview = item["question"][:60]
@@ -183,43 +310,43 @@ async def collect_responses(golden_set: list[dict]) -> list[dict]:
             try:
                 response = await get_rag_response(item["question"], client)
                 results.append(
-                    {
-                        "id": item["id"],
-                        "question": item["question"],
-                        "ground_truth": item["ground_truth"],
-                        "answer": response["answer"],
-                        "contexts": response["contexts"],
-                        "was_refused": response["was_refused"],
-                        "category": item.get("category", "unknown"),
-                        "difficulty": item.get("difficulty", "unknown"),
-                        "should_refuse": item["ground_truth"] == "UNANSWERABLE",
-                    }
+                    CollectedResponse(
+                        id=item["id"],
+                        question=item["question"],
+                        ground_truth=item["ground_truth"],
+                        answer=response["answer"],
+                        contexts=response["contexts"],
+                        was_refused=response["was_refused"],
+                        category=item["category"],
+                        difficulty=item["difficulty"],
+                        should_refuse=item["ground_truth"] == "UNANSWERABLE",
+                    )
                 )
             except Exception as exc:
                 logger.error("  ERROR on %s: %s", item["id"], exc)
                 results.append(
-                    {
-                        "id": item["id"],
-                        "question": item["question"],
-                        "ground_truth": item["ground_truth"],
-                        "answer": f"ERROR: {exc}",
-                        "contexts": [],
-                        "was_refused": False,
-                        "category": item.get("category", "unknown"),
-                        "difficulty": item.get("difficulty", "unknown"),
-                        "should_refuse": item["ground_truth"] == "UNANSWERABLE",
-                    }
+                    CollectedResponse(
+                        id=item["id"],
+                        question=item["question"],
+                        ground_truth=item["ground_truth"],
+                        answer=f"ERROR: {exc}",
+                        contexts=[],
+                        was_refused=False,
+                        category=item["category"],
+                        difficulty=item["difficulty"],
+                        should_refuse=item["ground_truth"] == "UNANSWERABLE",
+                    )
                 )
     return results
 
 
 def run_ragas_evaluation(
-    responses: list[dict],
+    responses: list[CollectedResponse],
     eval_max_workers: int,
     eval_max_retries: int,
     eval_max_wait: int,
     eval_max_tokens: int,
-) -> dict:
+) -> dict[str, float | None]:
     """Compute RAGAS metrics on the collected responses (RAGAS 0.4.x API)."""
     # Filter out questions that should trigger refusals — RAGAS can't evaluate these
     evaluable = [r for r in responses if not r["should_refuse"]]
@@ -228,7 +355,8 @@ def run_ragas_evaluation(
         logger.warning("No evaluable responses (all were expected refusals)")
         return {}
 
-    dataset = Dataset.from_dict(
+    dataset_cls: Any = Dataset
+    dataset = dataset_cls.from_dict(
         {
             "user_input": [r["question"] for r in evaluable],
             "response": [r["answer"] for r in evaluable],
@@ -246,16 +374,22 @@ def run_ragas_evaluation(
         max_wait=eval_max_wait,
     )
 
-    # Use legacy metric instances that are compatible with evaluate() in this RAGAS version
-    metrics = [
-        faithfulness,
-        answer_relevancy,
-        context_precision,
+    # Use legacy metric instances that are compatible with evaluate() in this RAGAS version.
+    ragas_metrics_any: Any = ragas_metrics
+    faithfulness_metric: Any = ragas_metrics_any.faithfulness
+    answer_relevancy_metric: Any = ragas_metrics_any.answer_relevancy
+    context_precision_metric: Any = ragas_metrics_any.context_precision
+    metrics: list[Any] = [
+        faithfulness_metric,
+        answer_relevancy_metric,
+        context_precision_metric,
     ]
-    # Reduce generations per sample for lower TPM usage and fewer truncation failures.
-    answer_relevancy.strictness = 1
 
-    result = evaluate(
+    # Reduce generations per sample for lower TPM usage and fewer truncation failures.
+    if hasattr(answer_relevancy_metric, "strictness"):
+        answer_relevancy_metric.strictness = 1
+
+    result: object = ragas_evaluate(
         dataset=dataset,
         metrics=metrics,
         llm=eval_llm,
@@ -267,30 +401,51 @@ def run_ragas_evaluation(
 
     # RAGAS can return either an aggregate dict (older behavior) or an EvaluationResult
     # object with per-sample `scores` rows. Normalize both into metric -> float.
-    if hasattr(result, "scores") and isinstance(result.scores, list):
+    result_dict: dict[str, float | None]
+    if hasattr(result, "scores"):
+        scores_obj: object = cast(Any, result).scores
+        if not isinstance(scores_obj, list):
+            raise TypeError("RAGAS result has non-list 'scores'.")
+
         aggregated: dict[str, float] = {}
-        if result.scores:
-            metric_names = result.scores[0].keys()
+        score_rows: list[Mapping[str, object]] = []
+        for row_obj in cast(list[object], scores_obj):
+            row_mapping = _as_mapping(row_obj)
+            if row_mapping is not None:
+                score_rows.append(row_mapping)
+
+        if score_rows:
+            metric_names: set[str] = set()
+            for row in score_rows:
+                for key in row.keys():
+                    metric_names.add(key)
+
             for metric_name in metric_names:
-                values = [
-                    row.get(metric_name)
-                    for row in result.scores
-                    if isinstance(row.get(metric_name), (int, float))
-                    and not math.isnan(float(row.get(metric_name)))
-                ]
+                values: list[float] = []
+                for row in score_rows:
+                    parsed = _finite_float(row.get(metric_name))
+                    if parsed is not None:
+                        values.append(parsed)
                 aggregated[metric_name] = (
-                    float(sum(values) / len(values)) if values else None
+                    float(sum(values) / len(values)) if values else math.nan
                 )
-        result_dict = aggregated
-    elif isinstance(result, dict):
-        result_dict = result
+        result_dict = {
+            key: (None if math.isnan(value) else value)
+            for key, value in aggregated.items()
+        }
+    elif isinstance(result, Mapping):
+        result_dict = {}
+        result_mapping = cast(Mapping[object, object], result)
+        for key, value in result_mapping.items():
+            if isinstance(key, str):
+                result_dict[key] = _finite_float(value)
     else:
         raise TypeError(
             f"Unsupported RAGAS evaluation result type: {type(result).__name__}"
         )
 
     # Normalize keys for downstream compatibility
-    scores = {}
+    scores: dict[str, float | None] = {}
     for key, value in result_dict.items():
         if key == "faithfulness":
             scores["faithfulness"] = value
@@ -304,21 +459,25 @@ def run_ragas_evaluation(
     return scores
 
 
-def compute_refusal_accuracy(responses: list[dict]) -> dict:
+def compute_refusal_accuracy(responses: list[CollectedResponse]) -> RefusalStats:
     """
     Measure how accurately the system handles out-of-scope questions.
     Correct: should_refuse=True AND was_refused=True
     """
     should_refuse = [r for r in responses if r["should_refuse"]]
     if not should_refuse:
-        return {"refusal_accuracy": None, "refusal_total": 0}
+        return RefusalStats(
+            refusal_accuracy=None,
+            refusal_total=0,
+            correct_refusals=0,
+        )
 
     correct_refusals = sum(1 for r in should_refuse if r["was_refused"])
-    return {
-        "refusal_accuracy": correct_refusals / len(should_refuse),
-        "correct_refusals": correct_refusals,
-        "refusal_total": len(should_refuse),
-    }
+    return RefusalStats(
+        refusal_accuracy=correct_refusals / len(should_refuse),
+        refusal_total=len(should_refuse),
+        correct_refusals=correct_refusals,
+    )
 
 
 def main() -> None:
@@ -355,6 +514,11 @@ def main() -> None:
         help="Max completion tokens per RAGAS LLM call.",
     )
     args = parser.parse_args()
+    output_path_arg = str(args.output)
+    eval_max_workers = int(args.eval_max_workers)
+    eval_max_retries = int(args.eval_max_retries)
+    eval_max_wait = int(args.eval_max_wait)
+    eval_max_tokens = int(args.eval_max_tokens)
 
     logger.info("Loading golden set...")
     golden_set = load_golden_set()
@@ -366,15 +530,15 @@ def main() -> None:
     logger.info("Running RAGAS evaluation...")
     ragas_scores = run_ragas_evaluation(
         responses,
-        eval_max_workers=args.eval_max_workers,
-        eval_max_retries=args.eval_max_retries,
-        eval_max_wait=args.eval_max_wait,
-        eval_max_tokens=args.eval_max_tokens,
+        eval_max_workers=eval_max_workers,
+        eval_max_retries=eval_max_retries,
+        eval_max_wait=eval_max_wait,
+        eval_max_tokens=eval_max_tokens,
     )
 
     refusal_stats = compute_refusal_accuracy(responses)
 
-    results = {
+    results: EvalResults = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "total_questions": len(golden_set),
         "evaluable_questions": len(
@@ -395,11 +559,11 @@ def main() -> None:
             f"({refusal_stats['correct_refusals']}/{refusal_stats['refusal_total']})"
         )
 
-    output_path = Path(args.output)
+    output_path = Path(output_path_arg)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
-    logger.info("Full results saved to: %s", args.output)
+    logger.info("Full results saved to: %s", output_path_arg)
 
 
 if __name__ == "__main__":

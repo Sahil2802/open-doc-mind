@@ -26,6 +26,35 @@ if not is_smoke_mode:
     except Exception as exc:
         logger.warning("Settings import failed; using FRONTEND_URL env fallback: %s", exc)
 
+
+def _normalize_origin(url: str) -> str:
+    return url.strip().rstrip("/")
+
+
+def _parse_frontend_origins(primary_url: str) -> list[str]:
+    # Allow a single URL in FRONTEND_URL and optional comma-separated extras in FRONTEND_URLS.
+    candidates = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        primary_url,
+    ]
+    extra_urls = os.getenv("FRONTEND_URLS", "")
+    if extra_urls:
+        candidates.extend(extra_urls.split(","))
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in candidates:
+        origin = _normalize_origin(raw)
+        if origin and origin not in seen:
+            normalized.append(origin)
+            seen.add(origin)
+    return normalized
+
+
+allowed_origins = _parse_frontend_origins(frontend_url)
+logger.info("Configured CORS allow_origins: %s", allowed_origins)
+
 app = FastAPI(
     title="RAG API",
     version="1.0.0",
@@ -36,11 +65,8 @@ app = FastAPI(
 # CORS — allow React dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev
-        "http://localhost:3000",  # Alternate dev
-        frontend_url,  # Production domain
-    ],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
